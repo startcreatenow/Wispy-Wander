@@ -6,6 +6,13 @@
 <meta name="theme-color" content="#ffeaf1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Wispy">
+<meta name="description" content="A soft, slow little adventure across 500 pastel dreams.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Wispy Wander — A Soft Little Adventure</title>
 <style>
   /* ===== RESET & BASE ===== */
@@ -222,6 +229,53 @@
   .corner-btn:hover { background: rgba(255,255,255,0.92); }
   #btn-menu { right: 22px; }
   #btn-mute { right: 110px; }
+
+  /* ===== MOBILE / TOUCH ===== */
+  @media (max-width: 800px), (pointer: coarse) {
+    body { background: radial-gradient(ellipse at 50% 30%, #ffeaf2 0%, #fff3e6 50%, #e6f5ff 100%); }
+    #stage { padding: 0; }
+    #cv {
+      border-radius: 0;
+      box-shadow: none;
+    }
+    #hud {
+      top: max(10px, env(safe-area-inset-top, 0px));
+      left: max(10px, env(safe-area-inset-left, 0px));
+      right: max(10px, env(safe-area-inset-right, 0px));
+      gap: 6px;
+    }
+    #hud-left, #hud-right { gap: 6px; }
+    .pill { padding: 7px 12px; font-size: 13px; gap: 6px; }
+    #lives-hearts { font-size: 16px; letter-spacing: 2px; }
+    .corner-btn {
+      top: max(10px, env(safe-area-inset-top, 0px));
+      padding: 8px 12px; font-size: 13px;
+    }
+    #btn-menu { right: max(10px, env(safe-area-inset-right, 0px)); }
+    #btn-mute { right: calc(max(10px, env(safe-area-inset-right, 0px)) + 80px); }
+    .btn { padding: 14px 26px; font-size: 16px; min-width: 180px; }
+    .btn.small { font-size: 13px; padding: 10px 16px; min-width: 0; }
+    .subtitle { font-size: 14px; padding: 0 18px; }
+    .pop { padding: 22px 22px; border-radius: 22px; }
+    .pop h2 { font-size: clamp(24px, 6vw, 32px); }
+    .pop p { font-size: 14px; }
+    .lv-grid {
+      grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+      gap: 8px; padding: 10px;
+      max-height: 56vh;
+    }
+    .lv-btn { font-size: 13px; border-radius: 10px; }
+    #cbar {
+      bottom: max(14px, env(safe-area-inset-bottom, 0px));
+      font-size: 12px; padding: 7px 14px;
+    }
+  }
+
+  @media (max-width: 380px) {
+    #hud-target { display: none; }   /* hide the target hint pill on very narrow screens */
+    .pill { padding: 6px 10px; font-size: 12px; }
+    .btn { min-width: 150px; padding: 12px 20px; font-size: 15px; }
+  }
 </style>
 </head>
 <body>
@@ -276,6 +330,7 @@
     </div>
     <div class="row" style="margin-top:8px">
       <button class="btn small" id="btn-how">How to Play</button>
+      <button class="btn small hidden" id="btn-install">📲 Install App</button>
       <button class="btn small" id="btn-reset">Start Over</button>
     </div>
   </div>
@@ -486,12 +541,30 @@ const ui = {
 function show(el) { el.classList.remove("hidden"); }
 function hide(el) { el.classList.add("hidden"); }
 
-/* ---------- Canvas sizing ---------- */
-const VIEW_W = 900, VIEW_H = 640;
+/* ---------- Canvas sizing (responsive, orientation-aware) ---------- */
+let VIEW_W = 900, VIEW_H = 640;
+let IS_TOUCH = false;
+try {
+  IS_TOUCH = window.matchMedia("(pointer: coarse)").matches
+          || ("ontouchstart" in window);
+} catch (e) {}
+
+function setViewSize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  // Portrait phones get a taller world; everything else stays landscape.
+  if (h > w * 1.05 && w < 800) {
+    VIEW_W = 640; VIEW_H = 900;
+  } else {
+    VIEW_W = 900; VIEW_H = 640;
+  }
+}
+
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const maxW = window.innerWidth - 24;
-  const maxH = window.innerHeight - 24;
+  const isSmall = window.innerWidth < 800 || IS_TOUCH;
+  const pad = isSmall ? 0 : 24;
+  const maxW = window.innerWidth - pad;
+  const maxH = window.innerHeight - pad;
   const aspect = VIEW_W / VIEW_H;
   let w = maxW, h = w / aspect;
   if (h > maxH) { h = maxH; w = h * aspect; }
@@ -502,6 +575,8 @@ function resize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", () => setTimeout(resize, 80));
+setViewSize();
 resize();
 
 /* ---------- Level generator ---------- */
@@ -695,6 +770,11 @@ function startLevel(n) {
   if (n > 500) n = 500;
   save.current = n;
   Save.set(save);
+
+  // Adapt world dimensions to current orientation (only on new level —
+  // mid-level orientation changes letterbox until next level start).
+  setViewSize();
+  resize();
 
   game.level = makeLevel(n);
   game.wispy = spawnWispy(game.level.spawn.x, game.level.spawn.y);
@@ -1319,14 +1399,18 @@ function loop(now) {
 /* ---------- Input ---------- */
 function ptCoords(e) {
   const rect = cv.getBoundingClientRect();
-  let cx, cy;
+  let cx, cy, isTouch = false;
   if (e.touches && e.touches[0]) {
-    cx = e.touches[0].clientX; cy = e.touches[0].clientY;
+    cx = e.touches[0].clientX; cy = e.touches[0].clientY; isTouch = true;
+  } else if (e.changedTouches && e.changedTouches[0]) {
+    cx = e.changedTouches[0].clientX; cy = e.changedTouches[0].clientY; isTouch = true;
   } else {
     cx = e.clientX; cy = e.clientY;
   }
   const x = ((cx - rect.left) / rect.width) * VIEW_W;
-  const y = ((cy - rect.top) / rect.height) * VIEW_H;
+  let y = ((cy - rect.top) / rect.height) * VIEW_H;
+  // Lift the target above the finger so Wispy isn't hidden under the thumb.
+  if (isTouch) y -= 60;
   return { x, y };
 }
 cv.addEventListener("mousedown", e => {
@@ -1484,6 +1568,36 @@ requestAnimationFrame((t) => { game.lastT = t; loop(t); });
 const resumer = () => { Audio.init(); Audio.resume(); };
 window.addEventListener("pointerdown", resumer, { once: true });
 window.addEventListener("keydown", resumer, { once: true });
+
+/* Service worker (PWA — offline + installable) */
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js")
+      .catch(err => console.warn("SW register failed:", err));
+  });
+}
+
+/* Install prompt — show "Install App" button when browser allows it. */
+let _installEvent = null;
+const _installBtn = document.getElementById("btn-install");
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  _installEvent = e;
+  if (_installBtn) _installBtn.classList.remove("hidden");
+});
+if (_installBtn) {
+  _installBtn.addEventListener("click", async () => {
+    Audio.click();
+    if (!_installEvent) return;
+    _installEvent.prompt();
+    try { await _installEvent.userChoice; } catch (e) {}
+    _installEvent = null;
+    _installBtn.classList.add("hidden");
+  });
+}
+window.addEventListener("appinstalled", () => {
+  if (_installBtn) _installBtn.classList.add("hidden");
+});
 </script>
 </body>
 </html>

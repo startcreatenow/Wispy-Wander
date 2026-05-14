@@ -14,6 +14,16 @@ needed. Your progress saves automatically in the browser.
 Or host it: any static host (GitHub Pages, Netlify, Vercel) will serve it
 as-is.
 
+## Install as an App (PWA)
+
+Once hosted over HTTPS, Wispy works as a Progressive Web App:
+
+- **Chrome / Edge (desktop & Android)** — a "📲 Install App" button appears
+  on the title screen. Tap it and Wispy lives in your app drawer / dock.
+- **iOS Safari** — open the page, tap **Share → Add to Home Screen**.
+- **Offline** — after first load, a service worker caches the game so it
+  runs without internet.
+
 ## Controls
 
 - **Hold mouse / finger** — gently pulls Wispy toward it
@@ -29,6 +39,8 @@ as-is.
 - Persistent score across sessions
 - Pure pentatonic Web Audio chimes — no music files
 - Single self-contained HTML file (no dependencies)
+- Installable PWA with offline support
+- Mobile-friendly — adapts to portrait phones, with thumb-safe touch controls
 
 ## Tech
 
