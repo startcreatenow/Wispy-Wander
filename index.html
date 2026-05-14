@@ -567,10 +567,25 @@ try {
 
 function setViewSize() {
   const w = window.innerWidth, h = window.innerHeight;
-  // Portrait phones get a taller world; everything else stays landscape.
-  if (h > w * 1.05 && w < 800) {
-    VIEW_W = 640; VIEW_H = 900;
+  const fill = w < 800 || IS_TOUCH;
+  if (fill) {
+    // Match the device's exact aspect ratio so the play area fills the
+    // whole screen (no letterbox sky-bars). Use the shorter dimension as
+    // the world's BASE so Wispy and dewdrops stay visually consistent.
+    const BASE = 640;
+    const aspect = w / h;
+    if (h > w) {
+      VIEW_W = BASE;
+      VIEW_H = Math.round(BASE / aspect);
+    } else {
+      VIEW_H = BASE;
+      VIEW_W = Math.round(BASE * aspect);
+    }
+    // Safety clamps so very weird aspect ratios don't blow up.
+    VIEW_W = Math.max(400, Math.min(VIEW_W, 2400));
+    VIEW_H = Math.max(400, Math.min(VIEW_H, 2400));
   } else {
+    // Desktop / wide screen: keep the original framed 900x640.
     VIEW_W = 900; VIEW_H = 640;
   }
 }
@@ -651,7 +666,7 @@ function makeLevel(n) {
   const portal = {
     x: flip ? margin : W - margin,
     y: margin + r() * (H - 2 * margin),
-    r: 44 - Math.min(20, diff * 16),
+    r: 56 - Math.min(22, diff * 18),
     target: null,
   };
 
@@ -669,7 +684,7 @@ function makeLevel(n) {
     }
     const c = DROP_COLORS[Math.floor(r() * DROP_COLORS.length)];
     usedColors.add(c.name);
-    dewdrops.push({ x, y, r: 13, color: c, taken: false, phase: r() * Math.PI * 2 });
+    dewdrops.push({ x, y, r: 18, color: c, taken: false, phase: r() * Math.PI * 2 });
   }
 
   // Place soft bumpers
@@ -724,8 +739,8 @@ function makeLevel(n) {
     });
   }
 
-  // Target color: from level 8+
-  if (n >= 8 && dewdrops.length > 0) {
+  // Target color: from level 15+ (gives players time to learn the basics first)
+  if (n >= 15 && dewdrops.length > 0) {
     // pick from used colors
     const arr = Array.from(usedColors);
     portal.target = DROP_COLORS.find(c => c.name === arr[Math.floor(r() * arr.length)]) || null;
@@ -762,7 +777,7 @@ const game = {
 /* ---------- Wispy ---------- */
 function spawnWispy(x, y) {
   return {
-    x, y, vx: 0, vy: 0, r: 22,
+    x, y, vx: 0, vy: 0, r: 30,
     tintR: 255, tintG: 255, tintB: 255,
     tintFade: 1.0,   // 0..1 — 1 = fully tinted to current target color
     targetR: 255, targetG: 255, targetB: 255,
