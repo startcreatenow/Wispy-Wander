@@ -1,6 +1,6 @@
 /* Wispy Wander — service worker
    Cache-first for the app shell so the game works offline. */
-const CACHE = "wispy-wander-v1";
+const CACHE = "wispy-wander-v2";
 const ASSETS = [
   "./",
   "./index.html",

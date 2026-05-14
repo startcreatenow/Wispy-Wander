@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#ffeaf1">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Wispy">
 <meta name="description" content="A soft, slow little adventure across 500 pastel dreams.">
@@ -38,13 +38,26 @@
   }
   #cv {
     display: block;
-    border-radius: 28px;
-    box-shadow:
-      0 24px 80px -20px rgba(255, 150, 190, 0.45),
-      0 6px 24px -10px rgba(180, 150, 220, 0.35),
-      inset 0 0 0 2px rgba(255, 255, 255, 0.7);
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    border-radius: 0;
+    box-shadow: none;
     background: linear-gradient(180deg, #ffe4f0 0%, #fff3df 50%, #d9f1ff 100%);
     cursor: pointer;
+  }
+  /* On wider non-touch screens, restore the soft "card" framing */
+  @media (min-width: 800px) and (pointer: fine) {
+    #stage { padding: 18px; }
+    #cv {
+      position: relative; inset: auto;
+      width: auto; height: auto;
+      max-width: 100%; max-height: 100%;
+      border-radius: 28px;
+      box-shadow:
+        0 24px 80px -20px rgba(255, 150, 190, 0.45),
+        0 6px 24px -10px rgba(180, 150, 220, 0.35),
+        inset 0 0 0 2px rgba(255, 255, 255, 0.7);
+    }
   }
 
   /* ===== UI OVERLAY ===== */
@@ -543,7 +556,10 @@ function hide(el) { el.classList.add("hidden"); }
 
 /* ---------- Canvas sizing (responsive, orientation-aware) ---------- */
 let VIEW_W = 900, VIEW_H = 640;
+let SCALE = 1, OFFSET_X = 0, OFFSET_Y = 0, DPR = 1;
+let CANVAS_CSS_W = 900, CANVAS_CSS_H = 640;
 let IS_TOUCH = false;
+let FILL_MODE = false;     // true => canvas fills window (mobile/PWA), false => card framing
 try {
   IS_TOUCH = window.matchMedia("(pointer: coarse)").matches
           || ("ontouchstart" in window);
@@ -561,18 +577,40 @@ function setViewSize() {
 
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const isSmall = window.innerWidth < 800 || IS_TOUCH;
-  const pad = isSmall ? 0 : 24;
-  const maxW = window.innerWidth - pad;
-  const maxH = window.innerHeight - pad;
-  const aspect = VIEW_W / VIEW_H;
-  let w = maxW, h = w / aspect;
-  if (h > maxH) { h = maxH; w = h * aspect; }
-  cv.style.width = w + "px";
-  cv.style.height = h + "px";
-  cv.width = Math.round(VIEW_W * dpr);
-  cv.height = Math.round(VIEW_H * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  DPR = dpr;
+  FILL_MODE = window.innerWidth < 800 || IS_TOUCH;
+
+  if (FILL_MODE) {
+    // Canvas fills the entire screen — sky extends to all edges.
+    CANVAS_CSS_W = window.innerWidth;
+    CANVAS_CSS_H = window.innerHeight;
+    // The element is already sized 100% via CSS; just sync the backing buffer.
+    cv.width  = Math.round(CANVAS_CSS_W * dpr);
+    cv.height = Math.round(CANVAS_CSS_H * dpr);
+  } else {
+    // "Card" mode for desktop: maintain world aspect, letterbox in body bg.
+    const pad = 36;
+    const maxW = window.innerWidth - pad;
+    const maxH = window.innerHeight - pad;
+    const aspect = VIEW_W / VIEW_H;
+    let w = maxW, h = w / aspect;
+    if (h > maxH) { h = maxH; w = h * aspect; }
+    CANVAS_CSS_W = w;
+    CANVAS_CSS_H = h;
+    cv.style.width  = w + "px";
+    cv.style.height = h + "px";
+    cv.width  = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+
+  // World -> canvas mapping (uniform scale, centered with offset).
+  const sx = CANVAS_CSS_W / VIEW_W;
+  const sy = CANVAS_CSS_H / VIEW_H;
+  SCALE = Math.min(sx, sy);
+  OFFSET_X = (CANVAS_CSS_W - VIEW_W * SCALE) / 2;
+  OFFSET_Y = (CANVAS_CSS_H - VIEW_H * SCALE) / 2;
+  ctx.setTransform(dpr * SCALE, 0, 0, dpr * SCALE,
+                   dpr * OFFSET_X, dpr * OFFSET_Y);
 }
 window.addEventListener("resize", resize);
 window.addEventListener("orientationchange", () => setTimeout(resize, 80));
@@ -1067,21 +1105,25 @@ function render() {
   const L = game.level;
   if (!L && game.scene === "playing") return;
 
-  // SKY
   const pal = L ? L.palette : PALETTES[0];
   const t = game.ambient * 0.18;
-  const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+
+  // ===== Sky + bokeh in canvas-pixel space (covers letterbox too) =====
+  ctx.save();
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_CSS_H);
   grad.addColorStop(0, pal.sky[0]);
   grad.addColorStop(0.5 + Math.sin(t) * 0.05, pal.sky[1]);
   grad.addColorStop(1, pal.sky[2]);
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillRect(0, 0, CANVAS_CSS_W, CANVAS_CSS_H);
 
-  // soft background bokeh
   const bokehRng = rng(hash(L ? L.level * 7 : 13));
-  for (let i = 0; i < 18; i++) {
-    const bx = bokehRng() * VIEW_W;
-    const by = bokehRng() * VIEW_H + Math.sin(game.ambient * 0.4 + i) * 18;
+  const bokehCount = Math.max(18, Math.round(CANVAS_CSS_W * CANVAS_CSS_H / 30000));
+  for (let i = 0; i < bokehCount; i++) {
+    const bx = bokehRng() * CANVAS_CSS_W;
+    const by = bokehRng() * CANVAS_CSS_H + Math.sin(game.ambient * 0.4 + i) * 18;
     const br = 14 + bokehRng() * 36;
     const r2g = ctx.createRadialGradient(bx, by, 0, bx, by, br);
     r2g.addColorStop(0, "rgba(255,255,255,0.45)");
@@ -1089,6 +1131,7 @@ function render() {
     ctx.fillStyle = r2g;
     ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI*2); ctx.fill();
   }
+  ctx.restore();
 
   if (game.scene !== "playing") return;
 
@@ -1163,24 +1206,28 @@ function render() {
   // WISPY
   drawWispy(game.wispy);
 
-  // FLASH (mismatch)
+  // ===== Full-screen overlays in canvas-pixel space =====
+  ctx.save();
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
   if (game.flash > 0) {
     ctx.fillStyle = `rgba(255, 100, 130, ${game.flash * 0.25})`;
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillRect(0, 0, CANVAS_CSS_W, CANVAS_CSS_H);
   }
-  // HURT FLASH (hazard hit)
   if (game.hurtFlash > 0) {
     ctx.fillStyle = `rgba(255, 80, 110, ${game.hurtFlash * 0.35})`;
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillRect(0, 0, CANVAS_CSS_W, CANVAS_CSS_H);
   }
 
-  // vignette
-  const vg = ctx.createRadialGradient(VIEW_W/2, VIEW_H/2, VIEW_H * 0.4,
-                                       VIEW_W/2, VIEW_H/2, VIEW_H * 0.85);
+  const vg = ctx.createRadialGradient(
+    CANVAS_CSS_W/2, CANVAS_CSS_H/2, Math.min(CANVAS_CSS_W, CANVAS_CSS_H) * 0.4,
+    CANVAS_CSS_W/2, CANVAS_CSS_H/2, Math.max(CANVAS_CSS_W, CANVAS_CSS_H) * 0.7);
   vg.addColorStop(0, "rgba(0,0,0,0)");
-  vg.addColorStop(1, "rgba(120, 90, 130, 0.12)");
+  vg.addColorStop(1, "rgba(120, 90, 130, 0.14)");
   ctx.fillStyle = vg;
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillRect(0, 0, CANVAS_CSS_W, CANVAS_CSS_H);
+
+  ctx.restore();
 }
 
 function drawCloud(x, y, r, color, phase, drifter) {
@@ -1407,8 +1454,9 @@ function ptCoords(e) {
   } else {
     cx = e.clientX; cy = e.clientY;
   }
-  const x = ((cx - rect.left) / rect.width) * VIEW_W;
-  let y = ((cy - rect.top) / rect.height) * VIEW_H;
+  // Inverse of the world-to-canvas transform: subtract offset, divide by scale.
+  const x = ((cx - rect.left) - OFFSET_X) / SCALE;
+  let y = ((cy - rect.top) - OFFSET_Y) / SCALE;
   // Lift the target above the finger so Wispy isn't hidden under the thumb.
   if (isTouch) y -= 60;
   return { x, y };
